@@ -74,6 +74,13 @@ student.save("artifacts/student")
 plan.save("artifacts/student/pruning_plan.json")
 ```
 
+![Animated walkthrough: load, tokenize, score activations, select FFN neurons, prune a copy, and save the model and plan.](docs/assets/pruning-workflow.gif)
+
+The animation illustrates the code above. FFN width changes from 3,072 to 2,304
+in each of 25 layers; the source model, hidden/output width and vocabulary are
+preserved. Neuron groups and scores are schematic. This example saves a pruned
+model and its plan; it does not run recovery training.
+
 The single sentence illustrates the API. Use representative training/calibration
 texts for actual selection, and pin the model revision for reproducibility.
 The source model is preserved; creating a copy requires additional memory.

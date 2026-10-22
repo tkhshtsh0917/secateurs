@@ -2,6 +2,7 @@
 
 ## Unreleased — 0.0.1.dev0
 
+- Illustrate the README pruning example with an animated workflow in both languages.
 - Add type hints across the package, examples and tests, distribute a `py.typed`
   marker, and require callable annotations in Ruff checks.
 - Credit the UltraBERT authors and provide the original paper's BibTeX in both

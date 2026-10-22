@@ -56,6 +56,10 @@ student.save("artifacts/student")
 plan.save("artifacts/student/pruning_plan.json")
 ```
 
+![読み込み、トークン化、活性値の集計、FFNニューロンの選択、コピーのpruning、モデルと計画の保存を順に示すアニメーション。](docs/assets/pruning-workflow.gif)
+
+アニメーションは上のコードの処理を図解しています。25層それぞれのFFN幅を3,072から2,304へ減らし、元モデル・hidden幅・出力次元・語彙は維持します。ニューロンのグループとスコアは模式図です。この例はpruning済みモデルと選択計画を保存するもので、回復学習は実行しません。
+
 1文だけの入力はAPIの使い方を示す例です。実際の選択には、用途を代表する学習・校正用テキストを使い、再現性のためモデルのrevisionを固定してください。元モデルは保持しますが、コピーの作成には追加のメモリーが必要です。`make_plan(..., scores=None, seed=0)`はseed付きランダム選択の対照条件になります。計画は`FFNPlan.save`と`FFNPlan.load`で保存・読み込みできます。
 
 ## 対応範囲
