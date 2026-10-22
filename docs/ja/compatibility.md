@@ -1,0 +1,15 @@
+# 互換性
+
+[English](../compatibility.md) | 日本語
+
+初期の対応範囲はPython 3.10〜3.12です。CIには、各バージョンでのテスト、ビルド、独立した環境へのwheelインストールを定義しています。CIの定義があることと、実際のGitHub上の実行が成功したことは別です。別のPython 3.12用CIジョブではtraining extraをインストールして回復学習を確認します。これがない環境では任意の学習テストがスキップされる場合があります。両ジョブともテスト時のHugging Faceモデル・データセットへのネットワークアクセスを無効にしています。
+
+開発用のロックファイルで使用しているのはPyTorch 2.14.1、Transformers 4.57.6、および任意依存のSentence Transformers 5.7.0です。パッケージに指定した、これより広い依存バージョン範囲はインストールの制約であり、その全組み合わせをテストしたという意味ではありません。Sentence Transformersアダプターは`Transformer.model`の連携仕様を対象としています。ruriのトークナイザーを再読み込みするにはSentencePieceとprotobufが必要で、任意依存のextrasに含めています。
+
+数値テストには、通常の浮動小数点重みとeager/SDPA attentionを使用する、小さなCPUモデルを使っています。ほかのバックエンド、コンパイル済みモデル、量子化重み、分散ラッパーは別途検証が必要です。あるバックエンドで推論できても、そのバックエンドで校正や構造の変換に対応できるとは限りません。
+
+テキストファイルの読み書きはUTF-8です。CPUベンチマークのサンプルはUnixの`resource`モジュールを使用するため、Linux/macOSが必要で、Windows用のベンチマークコマンドではありません。この制約はサンプルに関するもので、ライブラリの変換仕様とは独立しています。
+
+保存した生徒モデルは、標準のTransformers/Sentence Transformers形式を使用します。この段階で対応するのはModernBertModelと、全層で共通のFFN中間幅だけです。ほかのアーキテクチャやhidden幅・attentionのpruningは対象外です。
+
+アダプターはSentence Transformerの最初のモジュールが、登録済みのバックボーンを`Transformer.model`として公開していることを前提とします。エンコーダーをコピーし、トークナイザー、pooling、promptの設定を維持します。対象範囲は[研究上の比較](research.md)、今後の開発は[ロードマップ](roadmap.md)を参照してください。

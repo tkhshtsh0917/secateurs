@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "secateurs"
+version = "0.0.1.dev0"
+description = "Early experiments in UltraBERT-inspired FFN pruning for ModernBERT."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "torch>=2.6",
+    "transformers>=4.48,<5",
+]
+
+[project.optional-dependencies]
+sentence-transformers = [
+    "sentence-transformers>=5.7,<6",
+    "sentencepiece>=0.2",
+    "protobuf>=5,<8",
+]
+training = ["sentence-transformers>=5.7,<6", "sentencepiece>=0.2", "protobuf>=5,<8", "datasets>=3", "accelerate>=1"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-config --strict-markers"
+markers = [
+    "integration: checks requiring external model artifacts",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "D2", "D3"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/secateurs"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "examples", "docs", "README.md", "README.ja.md", "CHANGELOG.md", "LICENSE", "CONTRIBUTING.md", "pyproject.toml", "uv.lock", ".python-version", ".gitignore", ".github"]

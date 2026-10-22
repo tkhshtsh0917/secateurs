@@ -1,0 +1,69 @@
+# Python environments and build artifacts
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# Test, coverage and tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Generated data, models, evaluation results and logs
+/artifacts/
+/data/
+/reports/
+/cached_results/
+/outputs/
+/checkpoints/
+/models/
+*.log
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Distribution, transfer and result archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.whl
+
+# Local credentials and environment settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.credentials/
+.aws/
+.ssh/
+credentials.json
+credentials-*.json
+secrets.json
+secrets-*.json
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+.ipynb_checkpoints/
+*.tmp
+*.bak
+*.swp
+*.swo

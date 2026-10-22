@@ -1,0 +1,45 @@
+name: tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      HF_HUB_OFFLINE: '1'
+      HF_DATASETS_OFFLINE: '1'
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --python '${{ matrix.python }}' --extra sentence-transformers
+      - run: uv run --python '${{ matrix.python }}' ruff check .
+      - run: uv run --python '${{ matrix.python }}' ruff format --check .
+      - run: uv run --python '${{ matrix.python }}' pytest
+      - run: uv build --python '${{ matrix.python }}'
+      - name: Test installed wheel in a separate environment
+        run: |
+          uv venv --python '${{ matrix.python }}' /tmp/secateurs-wheel
+          wheel=(dist/*.whl)
+          uv pip install --python /tmp/secateurs-wheel/bin/python "${wheel[0]}[sentence-transformers]" 'pytest>=8'
+          /tmp/secateurs-wheel/bin/python -m pytest
+  training:
+    runs-on: ubuntu-latest
+    env:
+      HF_HUB_OFFLINE: '1'
+      HF_DATASETS_OFFLINE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --python '3.12' --extra training
+      - run: uv run --python '3.12' pytest
