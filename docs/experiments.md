@@ -2,7 +2,7 @@
 
 English | [日本語](ja/experiments.md)
 
-Status: 2026-10-22. This is an early record of an adapted pruning experiment,
+Status: 2026-10-23. This is an early record of an adapted pruning experiment,
 not a completed reproduction of UltraBERT. The
 [research comparison](research.md) identifies the methodological differences.
 
@@ -58,10 +58,12 @@ The following completed pairs used the same source model and recovered student,
 one run per model, on an NVIDIA A100-SXM4-40GB. Scores are nDCG@10 multiplied by
 100; the delta is recovered minus original.
 
-| Task | Original | Pruned and recovered | Delta, points |
-| --- | ---: | ---: | ---: |
-| JaCWIRRetrieval | 84.027 | 83.950 | -0.077 |
-| MultiLongDocReranking | 93.495 | 90.961 | -2.534 |
+| Task | Split | Original | Pruned and recovered | Delta, points |
+| --- | --- | ---: | ---: | ---: |
+| JaCWIRRetrieval | test | 84.027 | 83.950 | -0.077 |
+| MultiLongDocReranking | test | 93.495 | 90.961 | -2.534 |
+| MultiLongDocRetrieval | dev | 44.327 | 42.542 | -1.785 |
+| MultiLongDocRetrieval | test (supplemental) | 44.019 | 40.276 | -3.743 |
 
 These pairs used float32 with TF32 enabled, SDPA, a maximum sequence length of
 8,192, a batch cap of 64 and length-dependent batching with an attention-cell
@@ -69,14 +71,25 @@ budget of 4,194,304. Long inputs can use a batch size of 1. The environment used
 PyTorch 2.14.1+cu130, Transformers 4.57.6, Sentence Transformers 5.7.0,
 datasets 5.0.1, MTEB 2.26.3 and JMTEB 2.1.0.
 
-Both tasks used Japanese test data. JaCWIR used dataset revision
+All results use Japanese data. JaCWIR used dataset revision
 `abf6d5fb6759ad516f998bd887b75420d595672e`, 4,000 queries, 513,107 corpus
 documents, corpus chunks of 1,024 and top-k 1,000. MultiLongDocReranking used
 revision `ad09ce14c17bce6edae151b7f6ef12e15d91dbf3`, 200 queries and a candidate
-corpus of 1,581 documents. Queries and documents used the prefixes `検索クエリ: `
-and `検索文書: ` respectively.
+corpus of 1,581 documents. MultiLongDocRetrieval used revision
+`837028901907a7d419b4ab906f28e011ce1cc824`, 200 queries and 10,000 corpus
+documents per split, corpus chunks of 1,024 and top-k 1,000. JMTEB's summary
+selects dev for this task; test is reported separately as supplemental evidence.
+The two splits are not two independent tasks and are not averaged together.
+Queries and documents used the prefixes `検索クエリ: ` and `検索文書: ` respectively.
 
-These observations show a quality regression on long-document reranking. They do
+MIRACLRetrieval has completed for the original model only: dev nDCG@10 is
+72.310 on 860 queries and 6,953,614 corpus documents, at dataset revision
+`9c09abc13478308c27598f350e31d8f06b9b5481`. It used the same inference settings,
+corpus chunks of 1,024 and top-k 1,000. A matched recovered-model result is
+pending; this baseline alone does not show a compression effect.
+
+These observations show quality regressions on long-document retrieval and
+reranking. They do
 not isolate the effect of pruning from the effect of recovery: matched
 pruned-only results and complete controls are still needed. They also do not
 establish a general speedup or a full-suite JMTEB score. Results collected with

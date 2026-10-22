@@ -2,6 +2,8 @@
 
 ## Unreleased — 0.0.1.dev0
 
+- Credit the UltraBERT authors and provide the original paper's BibTeX in both
+  READMEs; record long-document retrieval pairs and the MIRACL baseline by split.
 - Reject colliding corpus/sidecar paths and unsupported encoder wrappers; keep
   saved-model verification active under optimized Python.
 - Separate offline training CI job for the recovery example.

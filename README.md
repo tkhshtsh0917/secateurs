@@ -121,3 +121,25 @@ immutability, gradients, invalid plans, and serialization.
 See [the algorithm contract](docs/pruning.md), [compatibility](docs/compatibility.md),
 [recovery](docs/recovery.md), [evaluation policy](docs/evaluation.md),
 [contributing](CONTRIBUTING.md), [changelog](CHANGELOG.md), and [MIT license](LICENSE).
+
+## Acknowledgments and citation
+
+We thank Jungwoo Park, Taewhoo Lee and Jaewoo Kang for
+[UltraBERT: Beyond the Limit of BERT Pre-Training](https://arxiv.org/abs/2610.15028v1),
+which motivated this project's pruning and recovery experiments. The
+[research comparison](docs/research.md) describes the parts adapted here and the
+differences from the original method.
+
+If your research builds on UltraBERT's methods, please cite the original paper:
+
+```bibtex
+@misc{park2026ultrabert,
+  title         = {{UltraBERT}: Beyond the Limit of {BERT} Pre-Training},
+  author        = {Jungwoo Park and Taewhoo Lee and Jaewoo Kang},
+  year          = {2026},
+  eprint        = {2610.15028},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  url           = {https://arxiv.org/abs/2610.15028v1}
+}
+```

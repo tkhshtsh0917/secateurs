@@ -85,3 +85,21 @@ pruningサンプル内の再読み込み確認は、自身の出力の動作確�
 テストには小さなオフラインモデルを使い、元サイズの参照モデルとの数値一致、元モデルの保持、勾配、不正な計画、シリアライズを確認します。
 
 [pruning仕様](docs/ja/pruning.md)、[互換性](docs/ja/compatibility.md)、[回復学習](docs/ja/recovery.md)、[評価方針](docs/ja/evaluation.md)、[開発への参加（英語）](CONTRIBUTING.md)、[変更履歴（英語）](CHANGELOG.md)、[MITライセンス](LICENSE)も参照してください。
+
+## 謝辞と引用
+
+本プロジェクトのpruning・回復学習の実験は、Jungwoo Park、Taewhoo Lee、Jaewoo Kangによる[UltraBERT: Beyond the Limit of BERT Pre-Training](https://arxiv.org/abs/2610.15028v1)に着想を得ています。著者の皆様に感謝します。取り入れた要素と元の方法との差分は[研究上の比較](docs/ja/research.md)に記載しています。
+
+UltraBERTの方法に基づく研究では、元論文を引用してください。
+
+```bibtex
+@misc{park2026ultrabert,
+  title         = {{UltraBERT}: Beyond the Limit of {BERT} Pre-Training},
+  author        = {Jungwoo Park and Taewhoo Lee and Jaewoo Kang},
+  year          = {2026},
+  eprint        = {2610.15028},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  url           = {https://arxiv.org/abs/2610.15028v1}
+}
+```
