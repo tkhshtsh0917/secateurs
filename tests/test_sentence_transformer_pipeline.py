@@ -1,9 +1,12 @@
 """Check Sentence Transformer pruning, serialization and saved-model verification."""
 
+from __future__ import annotations
+
 import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pytest
@@ -11,30 +14,38 @@ import pytest
 from secateurs import make_plan
 from secateurs.sentence_transformers import prune_sentence_transformer
 
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
+    from transformers import ModernBertModel
+
 st = pytest.importorskip("sentence_transformers")
 
 
 @pytest.fixture
-def texts():
+def texts() -> list[str]:
     """Provide three texts with different token counts."""
     return ["東京", "日本 首都", "東京 首都 日本"]
 
 
 @pytest.fixture
-def student(source):
+def student(source: SentenceTransformer) -> SentenceTransformer:
     """Prune an independent copy of the source encoder."""
-    return prune_sentence_transformer(source, make_plan(source[0].model, 12))
+    backbone = cast("ModernBertModel", source[0].model)
+    return prune_sentence_transformer(source, make_plan(backbone, 12))
 
 
-def test_pruning_preserves_source_and_prompts(source, texts):
+def test_pruning_preserves_source_and_prompts(
+    source: SentenceTransformer, texts: list[str]
+) -> None:
     """Verify pruning preserves source and prompts."""
     before = source.encode(texts, prompt_name="query", normalize_embeddings=True)
 
-    student = prune_sentence_transformer(source, make_plan(source[0].model, 12))
+    backbone = cast("ModernBertModel", source[0].model)
+    student = prune_sentence_transformer(source, make_plan(backbone, 12))
     after = student.encode(texts, prompt_name="query", normalize_embeddings=True)
 
-    assert student[0].model.config.intermediate_size == 12
-    assert source[0].model.config.intermediate_size == 24
+    assert cast("ModernBertModel", student[0].model).config.intermediate_size == 12
+    assert backbone.config.intermediate_size == 24
     assert student.prompts == source.prompts
     assert np.isfinite(after).all() and not np.allclose(before, after)
     np.testing.assert_allclose(
@@ -42,7 +53,9 @@ def test_pruning_preserves_source_and_prompts(source, texts):
     )
 
 
-def test_save_reload_preserves_embeddings_and_prompts(student, texts, tmp_path):
+def test_save_reload_preserves_embeddings_and_prompts(
+    student: SentenceTransformer, texts: list[str], tmp_path: Path
+) -> None:
     """Verify save reload preserves embeddings and prompts."""
     before = student.encode(texts, prompt_name="query", normalize_embeddings=True)
     path = tmp_path / "student"
@@ -57,7 +70,9 @@ def test_save_reload_preserves_embeddings_and_prompts(student, texts, tmp_path):
     np.testing.assert_allclose(after, before, atol=1e-6)
 
 
-def test_saved_model_cli_uses_reported_dimension(student, tmp_path):
+def test_saved_model_cli_uses_reported_dimension(
+    student: SentenceTransformer, tmp_path: Path
+) -> None:
     """Verify saved model cli uses reported dimension."""
     path = tmp_path / "student"
     student.save(str(path))

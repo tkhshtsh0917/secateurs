@@ -63,6 +63,7 @@ plan.save("artifacts/student/pruning_plan.json")
 - 全層で共通の目標FFN中間幅を使うModernBertModel。
 - 明示的な層ごとのニューロンインデックス、またはpaddingを除外したゲート適用後の活性値スコア。
 - 標準のモデル設定と保存・読み込み。専用の推論カーネルは使いません。
+- パッケージAPIの型ヒントを`py.typed`マーカーとともに配布します。
 - 残差の幅、語彙、attention、RoPE、poolingは変更しません。
 - 通常の浮動小数点重みを対象とし、コンパイル・量子化・分散ラッパーの適用やoptimizerの作成前に実行します。
 

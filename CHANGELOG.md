@@ -2,6 +2,8 @@
 
 ## Unreleased — 0.0.1.dev0
 
+- Add type hints across the package, examples and tests, distribute a `py.typed`
+  marker, and require callable annotations in Ruff checks.
 - Credit the UltraBERT authors and provide the original paper's BibTeX in both
   READMEs; record long-document retrieval pairs and the MIRACL baseline by split.
 - Reject colliding corpus/sidecar paths and unsupported encoder wrappers; keep

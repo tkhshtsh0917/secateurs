@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import copy
 import json
 import subprocess
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, NoReturn, cast
 
 import pytest
 import torch
@@ -9,9 +13,12 @@ from transformers import ModernBertConfig, ModernBertModel
 
 from secateurs import FFNPlan, activation_scores, make_plan, prune_ffn
 
+if TYPE_CHECKING:
+    from transformers.models.modernbert.modeling_modernbert import ModernBertMLP
+
 
 @pytest.fixture
-def model():
+def model() -> ModernBertModel:
     """Build a small biased ModernBERT backbone."""
     torch.manual_seed(42)
     config = ModernBertConfig(
@@ -34,7 +41,7 @@ def model():
 
 
 @pytest.fixture
-def batch():
+def batch() -> dict[str, torch.Tensor]:
     """Provide padded inputs with different valid-token counts."""
     return {
         "input_ids": torch.tensor([[1, 2, 3, 0], [1, 4, 0, 0]]),
@@ -43,29 +50,29 @@ def batch():
 
 
 @pytest.fixture
-def plan():
+def plan() -> FFNPlan:
     """Select non-contiguous source neurons in both layers."""
     return FFNPlan(16, 24, ((1, 4, 7, 15), (0, 3, 8, 20)))
 
 
 @pytest.fixture
-def student(model, plan):
+def student(model: ModernBertModel, plan: FFNPlan) -> ModernBertModel:
     """Prune an independent copy of the source encoder."""
     return prune_ffn(model, plan)
 
 
-def dense_reference(model, plan):
+def dense_reference(model: ModernBertModel, plan: FFNPlan) -> ModernBertModel:
     """Zero removed output columns in a full-width source copy."""
     reference = copy.deepcopy(model)
     for layer, keep in zip(reference.layers, plan.indices, strict=False):
         removed = [i for i in range(plan.source_width) if i not in keep]
         with torch.no_grad():
-            layer.mlp.Wo.weight[:, removed] = 0
+            cast("ModernBertMLP", layer.mlp).Wo.weight[:, removed] = 0
 
     return reference
 
 
-def test_zero_pruning(model, batch):
+def test_zero_pruning(model: ModernBertModel, batch: dict[str, torch.Tensor]) -> None:
     """Verify zero pruning."""
     result = prune_ffn(model, make_plan(model, 24))
 
@@ -74,7 +81,12 @@ def test_zero_pruning(model, batch):
     )
 
 
-def test_pruning_matches_dense_reference(model, plan, student, batch):
+def test_pruning_matches_dense_reference(
+    model: ModernBertModel,
+    plan: FFNPlan,
+    student: ModernBertModel,
+    batch: dict[str, torch.Tensor],
+) -> None:
     """Verify pruning matches dense reference."""
     reference = dense_reference(model, plan)
 
@@ -83,7 +95,9 @@ def test_pruning_matches_dense_reference(model, plan, student, batch):
     )
 
 
-def test_pruning_preserves_source_weights(model, plan):
+def test_pruning_preserves_source_weights(
+    model: ModernBertModel, plan: FFNPlan
+) -> None:
     """Verify pruning preserves source weights."""
     before = copy.deepcopy(model.state_dict())
 
@@ -93,7 +107,9 @@ def test_pruning_preserves_source_weights(model, plan):
         torch.testing.assert_close(value, before[key])
 
 
-def test_model_save_reload(student, batch, tmp_path):
+def test_model_save_reload(
+    student: ModernBertModel, batch: dict[str, torch.Tensor], tmp_path: Path
+) -> None:
     """Verify model save reload."""
     student.save_pretrained(tmp_path)
     loaded = ModernBertModel.from_pretrained(tmp_path, attn_implementation="eager")
@@ -103,7 +119,9 @@ def test_model_save_reload(student, batch, tmp_path):
     )
 
 
-def test_student_backward(student, batch):
+def test_student_backward(
+    student: ModernBertModel, batch: dict[str, torch.Tensor]
+) -> None:
     """Verify student backward."""
     student(**batch).last_hidden_state.square().mean().backward()
 
@@ -113,7 +131,7 @@ def test_student_backward(student, batch):
     )
 
 
-def test_plan_save_reload(plan, tmp_path):
+def test_plan_save_reload(plan: FFNPlan, tmp_path: Path) -> None:
     """Verify plan save reload."""
     path = tmp_path / "plan.json"
     plan.save(path)
@@ -124,13 +142,17 @@ def test_plan_save_reload(plan, tmp_path):
 @pytest.mark.parametrize(
     "indices", [((0, 0), (0, 1)), ((24,), (1,)), ((), ()), ((0,),)]
 )
-def test_invalid_indices(model, indices):
+def test_invalid_indices(
+    model: ModernBertModel, indices: tuple[tuple[int, ...], ...]
+) -> None:
     """Verify invalid indices."""
     with pytest.raises(ValueError):
         prune_ffn(model, FFNPlan(16, 24, indices))
 
 
-def test_calibration_excludes_padding_across_batches(model, batch):
+def test_calibration_excludes_padding_across_batches(
+    model: ModernBertModel, batch: dict[str, torch.Tensor]
+) -> None:
     """Verify calibration excludes padding across batches."""
     whole = activation_scores(model, [batch])
     split = activation_scores(
@@ -141,22 +163,31 @@ def test_calibration_excludes_padding_across_batches(model, batch):
 
 
 @pytest.mark.parametrize("missing_mask", [False, True])
-def test_calibration_failure_removes_hooks(model, batch, missing_mask):
+def test_calibration_failure_removes_hooks(
+    model: ModernBertModel, batch: dict[str, torch.Tensor], missing_mask: bool
+) -> None:
     """Verify calibration failure removes hooks."""
     batches = [{"input_ids": batch["input_ids"]}] if missing_mask else []
 
     with pytest.raises(ValueError):
         activation_scores(model, batches)
 
-    assert all(not layer.mlp.Wo._forward_pre_hooks for layer in model.layers)
+    assert all(
+        not cast("ModernBertMLP", layer.mlp).Wo._forward_pre_hooks
+        for layer in model.layers
+    )
 
 
-def test_forward_failure_restores_calibration_state(model, batch, monkeypatch):
+def test_forward_failure_restores_calibration_state(
+    model: ModernBertModel,
+    batch: dict[str, torch.Tensor],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify forward failure restores calibration state."""
     model.train()
     states = [module.training for module in model.modules()]
 
-    def fail(**kwargs):
+    def fail(**kwargs: object) -> NoReturn:
         """Raise an artificial forward-pass error."""
         raise RuntimeError("forward interrupted")
 
@@ -165,17 +196,20 @@ def test_forward_failure_restores_calibration_state(model, batch, monkeypatch):
         activation_scores(model, [batch])
 
     assert states == [module.training for module in model.modules()]
-    assert all(not layer.mlp.Wo._forward_pre_hooks for layer in model.layers)
+    assert all(
+        not cast("ModernBertMLP", layer.mlp).Wo._forward_pre_hooks
+        for layer in model.layers
+    )
 
 
-def test_sentence_transformer_registered_backbone(model):
+def test_sentence_transformer_registered_backbone(model: ModernBertModel) -> None:
     """Verify sentence transformer registered backbone."""
     from secateurs.sentence_transformers import prune_sentence_transformer
 
     class Wrapper(torch.nn.Module):
         """Expose the registered backbone as a model module."""
 
-        def __init__(self, backbone):
+        def __init__(self, backbone: ModernBertModel) -> None:
             """Register the supplied backbone."""
             super().__init__()
             self.model = backbone
@@ -183,38 +217,38 @@ def test_sentence_transformer_registered_backbone(model):
     original = torch.nn.ModuleList([Wrapper(model)])
     student = prune_sentence_transformer(original, make_plan(model, 12))
 
-    assert student[0].model.config.intermediate_size == 12
-    assert original[0].model.config.intermediate_size == 24
+    assert cast(ModernBertModel, student[0].model).config.intermediate_size == 12
+    assert cast(ModernBertModel, original[0].model).config.intermediate_size == 24
     assert sum(p.numel() for p in student.parameters()) < sum(
         p.numel() for p in original.parameters()
     )
 
 
-def test_plan_rejects_nonfinite_scores(model):
+def test_plan_rejects_nonfinite_scores(model: ModernBertModel) -> None:
     """Verify plan rejects nonfinite scores."""
     with pytest.raises(ValueError):
         make_plan(model, 12, torch.full((2, 24), float("nan")))
 
 
-def test_plan_rejects_stale_dimensions(model):
+def test_plan_rejects_stale_dimensions(model: ModernBertModel) -> None:
     """Verify plan rejects stale dimensions."""
     with pytest.raises(ValueError):
         prune_ffn(model, FFNPlan(16, 23, ((0,), (0,))))
 
 
-def test_score_ties_keep_source_order(model):
+def test_score_ties_keep_source_order(model: ModernBertModel) -> None:
     """Verify score ties keep source order."""
     scores = torch.zeros(2, 24)
 
     assert make_plan(model, 3, scores).indices == ((0, 1, 2), (0, 1, 2))
 
 
-def test_random_plan_is_reproducible(model):
+def test_random_plan_is_reproducible(model: ModernBertModel) -> None:
     """Verify random plan is reproducible."""
     assert make_plan(model, 3, seed=7) == make_plan(model, 3, seed=7)
 
 
-def encode_in_fresh_process(path, batch):
+def encode_in_fresh_process(path: Path, batch: dict[str, torch.Tensor]) -> torch.Tensor:
     """Load a saved backbone and encode inputs in a separate process."""
     code = """
 import json
@@ -248,7 +282,9 @@ print(json.dumps(output.tolist()))
     return torch.tensor(json.loads(result.stdout))
 
 
-def test_fresh_process_reload(student, batch, tmp_path):
+def test_fresh_process_reload(
+    student: ModernBertModel, batch: dict[str, torch.Tensor], tmp_path: Path
+) -> None:
     """Verify fresh process reload."""
     student.save_pretrained(tmp_path)
 
@@ -257,7 +293,7 @@ def test_fresh_process_reload(student, batch, tmp_path):
     torch.testing.assert_close(actual, student(**batch).last_hidden_state)
 
 
-def test_revision_guard(model):
+def test_revision_guard(model: ModernBertModel) -> None:
     """Verify revision guard."""
     model.config._commit_hash = "source-a"
     plan = make_plan(model, 12)
@@ -267,7 +303,9 @@ def test_revision_guard(model):
         prune_ffn(model, plan)
 
 
-def test_calibration_preserves_mixed_training_flags(model, batch):
+def test_calibration_preserves_mixed_training_flags(
+    model: ModernBertModel, batch: dict[str, torch.Tensor]
+) -> None:
     """Verify calibration preserves mixed training flags."""
     model.train()
     model.layers[0].eval()
@@ -278,48 +316,57 @@ def test_calibration_preserves_mixed_training_flags(model, batch):
     assert states == [module.training for module in model.modules()]
 
 
-def test_pruning_preserves_training_and_gradient_flags(model, plan):
+def test_pruning_preserves_training_and_gradient_flags(
+    model: ModernBertModel, plan: FFNPlan
+) -> None:
     """Verify pruning preserves training and gradient flags."""
     model.train()
     model.layers[0].eval()
-    model.layers[0].mlp.Wi.requires_grad_(False)
+    cast("ModernBertMLP", model.layers[0].mlp).Wi.requires_grad_(False)
 
     student = prune_ffn(model, plan)
 
     assert student.training
     assert not student.layers[0].training
-    assert not student.layers[0].mlp.Wi.weight.requires_grad
-    assert not student.layers[0].mlp.Wi.bias.requires_grad
-    assert student.layers[1].mlp.Wi.weight.requires_grad
+    frozen_projection = cast("ModernBertMLP", student.layers[0].mlp).Wi
+    assert not frozen_projection.weight.requires_grad
+    assert frozen_projection.bias is not None
+    assert not frozen_projection.bias.requires_grad
+    assert cast("ModernBertMLP", student.layers[1].mlp).Wi.weight.requires_grad
 
 
-def test_unsupported_model_is_rejected():
+def test_unsupported_model_is_rejected() -> None:
     """Verify unsupported model is rejected."""
     with pytest.raises(ValueError, match="ModernBertModel"):
-        make_plan(torch.nn.Linear(2, 2), 1)
+        make_plan(torch.nn.Linear(2, 2), 1)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
     "encoder", [None, [], [torch.nn.Linear(2, 2)], torch.nn.Linear(2, 2)]
 )
-def test_adapter_rejects_unsupported_encoder_with_value_error(encoder):
+def test_adapter_rejects_unsupported_encoder_with_value_error(encoder: object) -> None:
     """Give the documented error for absent or unsupported first modules."""
     from secateurs.sentence_transformers import prune_sentence_transformer
 
     with pytest.raises(ValueError, match="Transformer.model"):
-        prune_sentence_transformer(encoder, None)
+        prune_sentence_transformer(encoder, None)  # type: ignore[type-var, arg-type]
 
 
-def test_nonfinite_hook_input_restores_calibration_state(model, batch):
+def test_nonfinite_hook_input_restores_calibration_state(
+    model: ModernBertModel, batch: dict[str, torch.Tensor]
+) -> None:
     """Remove hooks and restore modes when activation validation fails in a hook."""
     model.train()
     model.layers[0].eval()
     modes = [module.training for module in model.modules()]
     with torch.no_grad():
-        model.layers[0].mlp.Wi.weight.fill_(float("nan"))
+        cast("ModernBertMLP", model.layers[0].mlp).Wi.weight.fill_(float("nan"))
 
     with pytest.raises(ValueError, match="Non-finite calibration activations"):
         activation_scores(model, [batch])
 
     assert modes == [module.training for module in model.modules()]
-    assert all(not layer.mlp.Wo._forward_pre_hooks for layer in model.layers)
+    assert all(
+        not cast("ModernBertMLP", layer.mlp).Wo._forward_pre_hooks
+        for layer in model.layers
+    )

@@ -1,9 +1,13 @@
 """Train a student to match precomputed teacher sentence embeddings with MSE."""
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from datasets import Dataset
@@ -14,12 +18,28 @@ from sentence_transformers import (
 )
 from sentence_transformers.sentence_transformer import losses
 
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
-def parse_args():
+
+class RecoveryArgs(argparse.Namespace):
+    """Store teacher, student, corpus and recovery-training options."""
+
+    student: str
+    texts: str
+    teacher: str
+    output: str
+    epochs: float
+    seed: int
+    teacher_revision: str | None
+
+
+def parse_args() -> RecoveryArgs:
     """Parse command-line options.
 
     Returns:
-        argparse.Namespace: Validated command-line arguments.
+        RecoveryArgs: Parsed training and checkpoint options.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--student", required=True)
@@ -32,10 +52,10 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--teacher-revision")
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=RecoveryArgs())
 
 
-def load_training_texts(path):
+def load_training_texts(path: str | Path) -> list[str]:
     """Read nonempty training lines from a UTF-8 file.
 
     Args:
@@ -55,7 +75,9 @@ def load_training_texts(path):
     return texts
 
 
-def teacher_embeddings(args, texts):
+def teacher_embeddings(
+    args: RecoveryArgs, texts: list[str]
+) -> tuple[NDArray[np.float32], str | None]:
     """Encode raw teacher embeddings and return the pinned revision.
 
     Args:
@@ -82,7 +104,7 @@ def teacher_embeddings(args, texts):
     return labels, teacher_revision
 
 
-def train_student(args, data):
+def train_student(args: RecoveryArgs, data: Dataset) -> dict[str, float]:
     """Train the student with embedding MSE and save its weights.
 
     Args:
@@ -118,7 +140,12 @@ def train_student(args, data):
     return training_result.metrics
 
 
-def write_report(args, texts, revision, metrics):
+def write_report(
+    args: RecoveryArgs,
+    texts: list[str],
+    revision: str | None,
+    metrics: Mapping[str, float],
+) -> None:
     """Write the recovery configuration and training measurements.
 
     Args:
@@ -151,7 +178,7 @@ def write_report(args, texts, revision, metrics):
     )
 
 
-def main():
+def main() -> None:
     """Generate teacher labels, train the student and record recovery settings."""
     args = parse_args()
     torch.set_num_threads(4)

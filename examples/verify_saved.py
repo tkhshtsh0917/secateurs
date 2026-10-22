@@ -1,28 +1,43 @@
 """Load a saved encoder and check embeddings and normalization."""
 
+from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
-def parse_args():
+
+class VerificationArgs(argparse.Namespace):
+    """Store the encoder path and verification-report destination."""
+
+    model: str
+    output: str
+
+
+def parse_args() -> VerificationArgs:
     """Parse command-line options.
 
     Returns:
-        argparse.Namespace: Validated command-line arguments.
+        VerificationArgs: Parsed encoder and report paths.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--output", required=True)
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=VerificationArgs())
 
 
-def check_embeddings(model, texts):
+def check_embeddings(
+    model: SentenceTransformer, texts: list[str]
+) -> tuple[NDArray[np.floating], NDArray[np.floating], float]:
     """Check finite embeddings, reported dimensions and normalization.
 
     Args:
@@ -36,8 +51,20 @@ def check_embeddings(model, texts):
         ValueError: Embeddings are nonfinite, have incorrect dimensions,
             or disagree with explicit normalization.
     """
-    raw = model.encode(texts, batch_size=1, normalize_embeddings=False)
-    normalized = model.encode(texts, batch_size=1, normalize_embeddings=True)
+    raw = model.encode(
+        texts,
+        batch_size=1,
+        normalize_embeddings=False,
+        convert_to_numpy=True,
+        convert_to_tensor=False,
+    )
+    normalized = model.encode(
+        texts,
+        batch_size=1,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        convert_to_tensor=False,
+    )
     if not np.isfinite(raw).all() or not np.isfinite(normalized).all():
         raise ValueError("Encoder returned nonfinite embeddings")
 
@@ -58,7 +85,14 @@ def check_embeddings(model, texts):
     return raw, norms, error
 
 
-def build_report(model, path, texts, raw, norms, error):
+def build_report(
+    model: SentenceTransformer,
+    path: Path,
+    texts: list[str],
+    raw: NDArray[np.floating],
+    norms: NDArray[np.floating],
+    error: float,
+) -> dict[str, object]:
     """Summarize the encoder files and verified embeddings.
 
     Args:
@@ -81,7 +115,9 @@ def build_report(model, path, texts, raw, norms, error):
             p.stat().st_size for p in path.rglob("*") if p.is_file()
         ),
         "safetensors_bytes": sum(p.stat().st_size for p in path.rglob("*.safetensors")),
-        "token_lengths": model.preprocess(texts)["attention_mask"].sum(-1).tolist(),
+        "token_lengths": model.preprocess(list(texts))["attention_mask"]
+        .sum(-1)
+        .tolist(),
         "embedding_shape": list(raw.shape),
         "raw_norms": norms[:, 0].tolist(),
         "normalization_max_error": error,
@@ -90,7 +126,7 @@ def build_report(model, path, texts, raw, norms, error):
     }
 
 
-def main():
+def main() -> None:
     """Load an encoder and write its embedding validation report."""
     args = parse_args()
     torch.set_num_threads(4)

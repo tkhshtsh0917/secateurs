@@ -1,5 +1,7 @@
 """Measure CPU encoding throughput and peak memory for one model."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import platform
@@ -7,16 +9,29 @@ import resource
 import statistics
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import torch
 from sentence_transformers import SentenceTransformer
 
+if TYPE_CHECKING:
+    from transformers import ModernBertModel
 
-def parse_args():
+
+class BenchmarkArgs(argparse.Namespace):
+    """Store the encoder, sequence limit and benchmark-report options."""
+
+    model: str
+    output: str
+    length: int
+    revision: str | None
+
+
+def parse_args() -> BenchmarkArgs:
     """Parse command-line options.
 
     Returns:
-        argparse.Namespace: Validated command-line arguments.
+        BenchmarkArgs: Parsed model, workload and output options.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
@@ -24,10 +39,10 @@ def parse_args():
     parser.add_argument("--length", type=int, default=128)
     parser.add_argument("--revision")
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=BenchmarkArgs())
 
 
-def load_encoder(args):
+def load_encoder(args: BenchmarkArgs) -> SentenceTransformer:
     """Load the pinned CPU encoder and set its sequence limit.
 
     Args:
@@ -51,7 +66,7 @@ def load_encoder(args):
     return model
 
 
-def measure_encoding(model, texts):
+def measure_encoding(model: SentenceTransformer, texts: list[str]) -> list[float]:
     """Warm up the encoder and collect seven timed batches.
 
     Args:
@@ -72,7 +87,12 @@ def measure_encoding(model, texts):
     return times
 
 
-def build_report(model, args, texts, times):
+def build_report(
+    model: SentenceTransformer,
+    args: BenchmarkArgs,
+    texts: list[str],
+    times: list[float],
+) -> dict[str, object]:
     """Summarize throughput, token lengths and process memory.
 
     Args:
@@ -85,9 +105,10 @@ def build_report(model, args, texts, times):
         dict: JSON-compatible measurements and configuration.
     """
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    backbone = cast("ModernBertModel", model[0].model)
     return {
         "model": args.model,
-        "revision": getattr(model[0].model.config, "_commit_hash", None),
+        "revision": getattr(backbone.config, "_commit_hash", None),
         "platform": platform.platform(),
         "torch": torch.__version__,
         "device": "cpu",
@@ -97,7 +118,7 @@ def build_report(model, args, texts, times):
         "parameters": sum(p.numel() for p in model.parameters()),
         "median_seconds": statistics.median(times),
         "sentences_per_second": len(texts) / statistics.median(times),
-        "actual_token_lengths": model.preprocess(texts)["attention_mask"]
+        "actual_token_lengths": model.preprocess(list(texts))["attention_mask"]
         .sum(-1)
         .tolist(),
         "seconds": times,
@@ -105,7 +126,7 @@ def build_report(model, args, texts, times):
     }
 
 
-def main():
+def main() -> None:
     """Measure a CPU workload and write its timing and memory report."""
     args = parse_args()
     torch.set_num_threads(4)

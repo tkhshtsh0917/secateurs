@@ -85,6 +85,7 @@ Plans can be saved and loaded with `FFNPlan.save` and `FFNPlan.load`.
 - ModernBertModel with a uniform target FFN intermediate width across layers.
 - Explicit per-layer neuron indices or padding-aware gated-activation scores.
 - Standard model configuration and saving/loading; no custom inference kernel.
+- Distributed type hints for package APIs, with a `py.typed` marker.
 - Residual width, vocabulary, attention, RoPE and pooling remain unchanged.
 - Ordinary floating-point weights, before compilation, quantization, distributed
   wrapping, or optimizer construction.

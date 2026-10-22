@@ -1,13 +1,22 @@
 """Score FFN neurons and prune ModernBERT projection matrices."""
 
+from __future__ import annotations
+
 import copy
 import json
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, cast
 
 import torch
 from torch import nn
+
+if TYPE_CHECKING:
+    from torch.utils.hooks import RemovableHandle
+    from transformers import ModernBertModel
+    from transformers.models.modernbert.modeling_modernbert import ModernBertMLP
 
 
 @dataclass(frozen=True)
@@ -39,7 +48,7 @@ class FFNPlan:
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "FFNPlan":
+    def load(cls, path: str | Path) -> FFNPlan:
         """Load source dimensions and retained indices from JSON.
 
         Args:
@@ -53,7 +62,7 @@ class FFNPlan:
         return cls(**data)
 
 
-def _check(model):
+def _check(model: ModernBertModel) -> tuple[int, int]:
     """Validate the backbone's type, projections and floating-point weights.
 
     Args:
@@ -74,7 +83,8 @@ def _check(model):
 
     h, width = model.config.hidden_size, model.config.intermediate_size
     for layer in model.layers:
-        for projection in (layer.mlp.Wi, layer.mlp.Wo):
+        mlp = cast("ModernBertMLP", layer.mlp)
+        for projection in (mlp.Wi, mlp.Wo):
             if (
                 type(projection) is not nn.Linear
                 or not projection.weight.is_floating_point()
@@ -82,15 +92,20 @@ def _check(model):
                 raise ValueError(
                     "Only ordinary floating-point Linear projections are supported"
                 )
-        if layer.mlp.Wi.weight.shape != (2 * width, h):
+        if mlp.Wi.weight.shape != (2 * width, h):
             raise ValueError("Unsupported packed input projection")
-        if layer.mlp.Wo.weight.shape != (h, width):
+        if mlp.Wo.weight.shape != (h, width):
             raise ValueError("Unsupported output projection")
 
     return h, width
 
 
-def make_plan(model, target_width: int, scores=None, seed: int = 0) -> FFNPlan:
+def make_plan(
+    model: ModernBertModel,
+    target_width: int,
+    scores: torch.Tensor | Sequence[Sequence[float]] | None = None,
+    seed: int = 0,
+) -> FFNPlan:
     """Select FFN neurons by score, or by a seeded random baseline.
 
     Stable sorting breaks score ties in source order. Retained indices are
@@ -136,7 +151,9 @@ def make_plan(model, target_width: int, scores=None, seed: int = 0) -> FFNPlan:
     )
 
 
-def _validate_plan(model, plan, hidden_size, source_width):
+def _validate_plan(
+    model: ModernBertModel, plan: FFNPlan, hidden_size: int, source_width: int
+) -> int:
     """Validate source metadata, uniform widths and retained indices.
 
     Args:
@@ -175,7 +192,9 @@ def _validate_plan(model, plan, hidden_size, source_width):
     return next(iter(sizes))
 
 
-def _slice_linear(layer, indices, axis):
+def _slice_linear(
+    layer: nn.Linear, indices: torch.Tensor, axis: Literal[0, 1]
+) -> nn.Linear:
     """Copy selected rows or columns into a smaller Linear layer.
 
     The copy retains device, dtype, matching bias, gradient flags and mode.
@@ -215,7 +234,7 @@ def _slice_linear(layer, indices, axis):
     return result
 
 
-def _prune_mlp(mlp, retained, source_width):
+def _prune_mlp(mlp: ModernBertMLP, retained: Sequence[int], source_width: int) -> None:
     """Shrink gated input rows and their matching output columns in place.
 
     Args:
@@ -230,7 +249,7 @@ def _prune_mlp(mlp, retained, source_width):
     mlp.Wo = _slice_linear(mlp.Wo, indices, axis=1)
 
 
-def prune_ffn(model, plan: FFNPlan):
+def prune_ffn(model: ModernBertModel, plan: FFNPlan) -> ModernBertModel:
     """Copy a ModernBERT backbone and shrink its FFN matrices.
 
     The plan is validated before copying; the source model is never modified.
@@ -253,7 +272,7 @@ def prune_ffn(model, plan: FFNPlan):
 
     result = copy.deepcopy(model)
     for layer, retained in zip(result.layers, plan.indices, strict=False):
-        _prune_mlp(layer.mlp, retained, source_width)
+        _prune_mlp(cast("ModernBertMLP", layer.mlp), retained, source_width)
     result.config.intermediate_size = target
 
     return result
@@ -268,7 +287,7 @@ class _ActivationAccumulator:
         mask: Attention mask for the current batch.
     """
 
-    def __init__(self, layers, width):
+    def __init__(self, layers: int, width: int) -> None:
         """Allocate sums and counts for the source FFN layout.
 
         Args:
@@ -277,9 +296,11 @@ class _ActivationAccumulator:
         """
         self.totals = torch.zeros(layers, width, dtype=torch.float64)
         self.counts = torch.zeros(layers, dtype=torch.long)
-        self.mask = None
+        self.mask: torch.Tensor | None = None
 
-    def hook_for(self, index):
+    def hook_for(
+        self, index: int
+    ) -> Callable[[nn.Module, tuple[torch.Tensor, ...]], None]:
         """Create a hook for one layer's down-projection input.
 
         Args:
@@ -289,13 +310,13 @@ class _ActivationAccumulator:
             Callable: Forward pre-hook that records gated activations.
         """
 
-        def hook(module, args):
+        def hook(module: nn.Module, args: tuple[torch.Tensor, ...]) -> None:
             """Record this layer's gated activations."""
             self.record(index, args[0])
 
         return hook
 
-    def record(self, index, activation):
+    def record(self, index: int, activation: torch.Tensor) -> None:
         """Validate and accumulate activations after excluding padding.
 
         Args:
@@ -322,7 +343,7 @@ class _ActivationAccumulator:
         self.totals[index].add_(valid.abs().sum(0).double().cpu())
         self.counts[index] += len(valid)
 
-    def mean(self):
+    def mean(self) -> torch.Tensor:
         """Compute each neuron's mean magnitude across valid tokens.
 
         Returns:
@@ -338,7 +359,9 @@ class _ActivationAccumulator:
 
 
 @contextmanager
-def _calibration_hooks(model, accumulator):
+def _calibration_hooks(
+    model: ModernBertModel, accumulator: _ActivationAccumulator
+) -> Iterator[None]:
     """Install hooks in evaluation mode and always restore model state.
 
     The finally block removes hooks and restores each module's original
@@ -351,14 +374,15 @@ def _calibration_hooks(model, accumulator):
     Yields:
         None: Control while calibration hooks are installed.
     """
-    handles = []
+    handles: list[RemovableHandle] = []
     training = {module: module.training for module in model.modules()}
 
     try:
         model.eval()
         for index, layer in enumerate(model.layers):
             hook = accumulator.hook_for(index)
-            handles.append(layer.mlp.Wo.register_forward_pre_hook(hook))
+            mlp = cast("ModernBertMLP", layer.mlp)
+            handles.append(mlp.Wo.register_forward_pre_hook(hook))
         yield
     finally:
         for handle in handles:
@@ -368,7 +392,9 @@ def _calibration_hooks(model, accumulator):
 
 
 @torch.no_grad()
-def activation_scores(model, batches):
+def activation_scores(
+    model: ModernBertModel, batches: Iterable[Mapping[str, torch.Tensor]]
+) -> torch.Tensor:
     """Average gated activation magnitudes over non-padding tokens.
 
     Calibration disables gradients and dropout temporarily. Prompts present

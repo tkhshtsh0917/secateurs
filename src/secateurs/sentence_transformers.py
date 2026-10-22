@@ -1,11 +1,30 @@
 """Prune the ModernBERT backbone in a SentenceTransformer."""
 
+from __future__ import annotations
+
 import copy
+from typing import TYPE_CHECKING, Protocol, TypeVar, cast
 
-from .modernbert import prune_ffn
+from torch import nn
+
+from .modernbert import FFNPlan, prune_ffn
+
+if TYPE_CHECKING:
+    from transformers import ModernBertModel
 
 
-def prune_sentence_transformer(model, plan):
+class _Encoder(Protocol):
+    """Describe an encoder container without importing Sentence Transformers."""
+
+    def __getitem__(self, index: int, /) -> nn.Module:
+        """Return the registered module at the requested position."""
+        ...
+
+
+_EncoderT = TypeVar("_EncoderT", bound=_Encoder)
+
+
+def prune_sentence_transformer(model: _EncoderT, plan: FFNPlan) -> _EncoderT:
     """Copy an encoder and prune its registered ModernBERT FFN.
 
     Shared backbone/config references are replaced together. Tokenizer,
@@ -16,7 +35,7 @@ def prune_sentence_transformer(model, plan):
         plan: Compatible FFN pruning plan for that backbone.
 
     Returns:
-        SentenceTransformer: Independent encoder containing the pruned backbone.
+        _EncoderT: Independent encoder of the input type with a pruned backbone.
 
     Raises:
         ValueError: The first module or backbone is unsupported, or the plan is invalid.
@@ -34,7 +53,7 @@ def prune_sentence_transformer(model, plan):
     if not hasattr(first_module, "model"):
         raise ValueError("Expected a Sentence Transformers Transformer.model module")
 
-    backbone = first_module.model
+    backbone = cast("ModernBertModel", first_module.model)
     pruned = prune_ffn(backbone, plan)
 
     return copy.deepcopy(

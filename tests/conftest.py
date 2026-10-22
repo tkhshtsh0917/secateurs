@@ -1,5 +1,10 @@
 """Build a small, offline sentence encoder for integration tests."""
 
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import pytest
 import torch
 from tokenizers import Tokenizer
@@ -7,8 +12,11 @@ from tokenizers.models import WordLevel
 from tokenizers.pre_tokenizers import Whitespace
 from transformers import ModernBertConfig, ModernBertModel, PreTrainedTokenizerFast
 
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
-def save_backbone(path):
+
+def save_backbone(path: Path) -> None:
     """Save a small ModernBERT backbone with eager attention."""
     config = ModernBertConfig(
         vocab_size=32,
@@ -26,7 +34,7 @@ def save_backbone(path):
     ModernBertModel(config).eval().save_pretrained(path)
 
 
-def save_tokenizer(path):
+def save_tokenizer(path: Path) -> None:
     """Save a local word-level tokenizer with explicit input fields."""
     tokenizer = Tokenizer(
         WordLevel(
@@ -46,7 +54,7 @@ def save_tokenizer(path):
 
 
 @pytest.fixture
-def source(tmp_path):
+def source(tmp_path: Path) -> SentenceTransformer:
     """Build an offline sentence encoder with tokenizer, pooling and a query prompt."""
     st = pytest.importorskip("sentence_transformers")
     from sentence_transformers.sentence_transformer.modules import Pooling, Transformer

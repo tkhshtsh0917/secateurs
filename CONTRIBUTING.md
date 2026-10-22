@@ -39,6 +39,12 @@ implemented features, preliminary evidence and planned work distinct. Tests
 should check individual properties with shared fixtures for setup. Examples should each teach one main workflow step, separate
 argument parsing from execution, and avoid running work on import.
 
+Annotate callable parameters and return values, including fixtures and example
+helpers. Prefer concrete model, tensor and array types; use protocols for supported
+interfaces and `object` for heterogeneous report values. Ruff checks annotation
+coverage. Keep optional dependencies out of runtime imports used only for typing.
+The package ships a `py.typed` marker for downstream type checkers.
+
 English documents have Japanese counterparts in `README.ja.md` and `docs/ja/`.
 Update both when changing commands, numerical results, supported scope or limits.
 Keep language links working and preserve executable examples across translations.

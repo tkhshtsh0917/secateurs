@@ -1,24 +1,46 @@
 """Calibrate, prune and verify a saved ruri encoder."""
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
 import time
+from collections.abc import Mapping
 from importlib.metadata import version
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, cast
 
 import torch
 from sentence_transformers import SentenceTransformer
 
-from secateurs import activation_scores, make_plan
+from secateurs import FFNPlan, activation_scores, make_plan
 from secateurs.sentence_transformers import prune_sentence_transformer
 
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+    from transformers import ModernBertModel
+    from transformers.models.modernbert.modeling_modernbert import ModernBertMLP
 
-def parse_args():
+
+class PilotArgs(argparse.Namespace):
+    """Store calibration, selection and output options for the pruning pilot."""
+
+    output: str
+    texts: str | None
+    target_width: int
+    seed: int
+    timing_repeats: int
+    revision: str
+    policy: Literal["activation", "random", "weight"]
+
+
+def parse_args() -> PilotArgs:
     """Parse command-line options.
 
     Returns:
-        argparse.Namespace: Validated command-line arguments.
+        PilotArgs: Parsed pruning and measurement options.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="artifacts/ruri-ffn-2304")
@@ -33,10 +55,10 @@ def parse_args():
         "--policy", choices=["activation", "random", "weight"], default="activation"
     )
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=PilotArgs())
 
 
-def load_texts(path):
+def load_texts(path: str | Path | None) -> list[str]:
     """Read calibration texts or use the four built-in smoke inputs.
 
     Args:
@@ -59,7 +81,11 @@ def load_texts(path):
     return texts
 
 
-def select_scores(backbone, batch, policy):
+def select_scores(
+    backbone: ModernBertModel,
+    batch: Mapping[str, torch.Tensor],
+    policy: Literal["activation", "random", "weight"],
+) -> torch.Tensor | None:
     """Compute activation or weight scores, or select the random baseline.
 
     Args:
@@ -71,7 +97,7 @@ def select_scores(backbone, batch, policy):
         torch.Tensor | None: Per-layer scores, or None for random selection.
     """
     width = backbone.config.intermediate_size
-    scores = None
+    scores: torch.Tensor | None = None
     if policy == "activation":
         scores = activation_scores(
             backbone,
@@ -81,19 +107,22 @@ def select_scores(backbone, batch, policy):
             ],
         )
     elif policy == "weight":
+        mlps = (cast("ModernBertMLP", layer.mlp) for layer in backbone.layers)
         scores = torch.stack(
             [
-                layer.mlp.Wi.weight[:width].norm(dim=1)
-                * layer.mlp.Wi.weight[width:].norm(dim=1)
-                * layer.mlp.Wo.weight.norm(dim=0)
-                for layer in backbone.layers
+                mlp.Wi.weight[:width].norm(dim=1)
+                * mlp.Wi.weight[width:].norm(dim=1)
+                * mlp.Wo.weight.norm(dim=0)
+                for mlp in mlps
             ]
         ).detach()
 
     return scores
 
 
-def verify_reload(model, output, texts):
+def verify_reload(
+    model: SentenceTransformer, output: Path, texts: list[str]
+) -> tuple[SentenceTransformer, NDArray[np.float32], NDArray[np.float32]]:
     """Compare student embeddings before and after standard reload.
 
     Args:
@@ -107,11 +136,15 @@ def verify_reload(model, output, texts):
     Raises:
         ValueError: Student embeddings change after serialization.
     """
-    student = model.encode(texts, normalize_embeddings=True)
+    student = model.encode(
+        texts, normalize_embeddings=True, convert_to_numpy=True, convert_to_tensor=False
+    )
     loaded = SentenceTransformer(
         str(output), device="cpu", model_kwargs={"attn_implementation": "sdpa"}
     )
-    reloaded = loaded.encode(texts, normalize_embeddings=True)
+    reloaded = loaded.encode(
+        texts, normalize_embeddings=True, convert_to_numpy=True, convert_to_tensor=False
+    )
     if not torch.allclose(
         torch.from_numpy(student), torch.from_numpy(reloaded), atol=1e-5
     ):
@@ -120,7 +153,9 @@ def verify_reload(model, output, texts):
     return loaded, student, reloaded
 
 
-def measure_encoding(model, texts, repeats):
+def measure_encoding(
+    model: SentenceTransformer, texts: list[str], repeats: int
+) -> list[float]:
     """Collect the requested number of CPU encoding timings.
 
     Args:
@@ -140,7 +175,12 @@ def measure_encoding(model, texts, repeats):
     return times
 
 
-def calibration_report(args, texts, batch, loaded):
+def calibration_report(
+    args: PilotArgs,
+    texts: list[str],
+    batch: Mapping[str, torch.Tensor],
+    loaded: SentenceTransformer,
+) -> dict[str, object]:
     """Record calibration provenance, token counts and scoring settings.
 
     Args:
@@ -174,7 +214,15 @@ def calibration_report(args, texts, batch, loaded):
     }
 
 
-def build_report(args, plan, count_before, loaded, embeddings, times, calibration):
+def build_report(
+    args: PilotArgs,
+    plan: FFNPlan,
+    count_before: int,
+    loaded: SentenceTransformer,
+    embeddings: tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]],
+    times: list[float],
+    calibration: Mapping[str, object],
+) -> dict[str, object]:
     """Summarize pruning size, reload agreement and pilot measurements.
 
     Args:
@@ -216,7 +264,7 @@ def build_report(args, plan, count_before, loaded, embeddings, times, calibratio
     }
 
 
-def save_report(output, report):
+def save_report(output: Path, report: Mapping[str, object]) -> None:
     """Write the pilot report beside the student and in reports.
 
     Args:
@@ -232,7 +280,7 @@ def save_report(output, report):
     print(json.dumps(report, indent=2))
 
 
-def main():
+def main() -> None:
     """Calibrate, prune and save a student with a reload verification report."""
     args = parse_args()
     torch.set_num_threads(4)
@@ -244,7 +292,7 @@ def main():
         device="cpu",
         model_kwargs={"attn_implementation": "sdpa"},
     )
-    backbone = model[0].model
+    backbone = cast("ModernBertModel", model[0].model)
     original = model.encode(texts, normalize_embeddings=True)
     batch = {
         k: v

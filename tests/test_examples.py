@@ -1,22 +1,31 @@
 """Exercise pruning examples without model or dataset downloads."""
 
+from __future__ import annotations
+
 import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer as SentenceEncoder
+    from transformers import ModernBertModel
 
 SentenceTransformer = pytest.importorskip("sentence_transformers").SentenceTransformer
 
 ROOT = Path(__file__).parents[1]
 
 
-def load_example(name):
+def load_example(name: str) -> ModuleType:
     """Import an example without invoking its command-line entry point."""
     path = ROOT / "examples" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(f"secateurs_example_{name}", path)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
@@ -24,13 +33,18 @@ def load_example(name):
 
 
 @pytest.mark.parametrize("policy", ["activation", "weight", "random"])
-def test_pruning_pilot_saves_reloadable_student(source, tmp_path, monkeypatch, policy):
+def test_pruning_pilot_saves_reloadable_student(
+    source: SentenceEncoder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+) -> None:
     """Run each selection policy through the complete offline pruning example."""
     source_path = tmp_path / "source-model"
     source.save(str(source_path))
     module = load_example("ruri_pilot")
 
-    def load_model(path, **kwargs):
+    def load_model(path: str | Path, **kwargs: Any) -> SentenceEncoder:
         """Resolve the reference model to the local offline fixture."""
         if str(path) == "cl-nagoya/ruri-v3-310m":
             path = source_path
@@ -67,7 +81,9 @@ def test_pruning_pilot_saves_reloadable_student(source, tmp_path, monkeypatch, p
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="CPU benchmark uses Unix resource")
-def test_cpu_benchmark_outputs_finite_measurements(source, tmp_path, monkeypatch):
+def test_cpu_benchmark_outputs_finite_measurements(
+    source: SentenceEncoder, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Measure a small saved model through the CPU benchmark entry point."""
     path = tmp_path / "encoder"
     source.save(str(path))
@@ -96,7 +112,9 @@ def test_cpu_benchmark_outputs_finite_measurements(source, tmp_path, monkeypatch
     assert report["actual_token_lengths"] == [16] * 8
 
 
-def test_prepare_data_writes_corpus_and_provenance(tmp_path, monkeypatch):
+def test_prepare_data_writes_corpus_and_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Save 256 training entries with a matching dataset revision and file hash."""
     import hashlib
     from types import SimpleNamespace
@@ -119,8 +137,8 @@ def test_prepare_data_writes_corpus_and_provenance(tmp_path, monkeypatch):
 
 
 def test_distillation_saves_recovered_model_and_teacher_revision(
-    source, tmp_path, monkeypatch
-):
+    source: SentenceEncoder, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Train a small student offline and preserve recovery provenance."""
     pytest.importorskip("datasets")
     pytest.importorskip("accelerate")
@@ -135,11 +153,10 @@ def test_distillation_saves_recovered_model_and_teacher_revision(
     from secateurs import make_plan
     from secateurs.sentence_transformers import prune_sentence_transformer
 
-    prune_sentence_transformer(source, make_plan(source[0].model, 12)).save(
-        str(student)
-    )
+    backbone = cast("ModernBertModel", source[0].model)
+    prune_sentence_transformer(source, make_plan(backbone, 12)).save(str(student))
 
-    def load_model(path, **kwargs):
+    def load_model(path: str | Path, **kwargs: Any) -> SentenceEncoder:
         """Resolve the reference teacher to the local offline fixture."""
         if str(path) == "cl-nagoya/ruri-v3-310m":
             path = teacher
@@ -173,7 +190,9 @@ def test_distillation_saves_recovered_model_and_teacher_revision(
 
 
 @pytest.mark.parametrize("suffix", [".json", ".JSON"])
-def test_prepare_data_rejects_colliding_sidecar_without_overwriting(tmp_path, suffix):
+def test_prepare_data_rejects_colliding_sidecar_without_overwriting(
+    tmp_path: Path, suffix: str
+) -> None:
     """Reject a colliding sidecar path before changing the existing corpus."""
     pytest.importorskip("datasets")
     module = load_example("prepare_data")
@@ -189,12 +208,13 @@ def test_prepare_data_rejects_colliding_sidecar_without_overwriting(tmp_path, su
 @pytest.mark.parametrize(
     "case", ["nonfinite", "shape", "zero", "normalization", "dimension"]
 )
-def test_saved_model_verification_rejects_invalid_embeddings(case):
+def test_saved_model_verification_rejects_invalid_embeddings(case: str) -> None:
     """Reject invalid values, dimensions and inconsistent normalization."""
     from types import SimpleNamespace
 
     module = load_example("verify_saved")
-    raw, normalized, dimension = np.array([[2.0, 0.0]]), np.array([[1.0, 0.0]]), 2
+    raw, normalized = np.array([[2.0, 0.0]]), np.array([[1.0, 0.0]])
+    dimension: int | None = 2
     if case == "nonfinite":
         raw[0, 0] = np.nan
     elif case == "shape":
@@ -217,7 +237,7 @@ def test_saved_model_verification_rejects_invalid_embeddings(case):
         module.check_embeddings(model, ["日本"])
 
 
-def test_saved_model_verification_still_checks_under_python_optimization():
+def test_saved_model_verification_still_checks_under_python_optimization() -> None:
     """Reject nonfinite embeddings even when Python disables assertions."""
     import subprocess
 

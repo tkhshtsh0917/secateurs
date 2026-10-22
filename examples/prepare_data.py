@@ -1,8 +1,11 @@
 """Write 256 sentence entries from the pinned JSTS training split."""
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 from datasets import load_dataset
@@ -10,11 +13,17 @@ from datasets import load_dataset
 REVISION = "5bac629e25799df4c9c80a6a5db983d6cba9e77d"
 
 
-def parse_args():
+class CorpusArgs(argparse.Namespace):
+    """Store the destination for the corpus and its provenance sidecar."""
+
+    output: str
+
+
+def parse_args() -> CorpusArgs:
     """Parse command-line options.
 
     Returns:
-        argparse.Namespace: Validated command-line arguments.
+        CorpusArgs: Parsed corpus output options.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -23,24 +32,24 @@ def parse_args():
         help="Text corpus path; the .json suffix is reserved for provenance",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=CorpusArgs())
 
 
-def load_training_texts():
+def load_training_texts() -> list[str]:
     """Load the first 128 JSTS training pairs as 256 sentence entries.
 
     Returns:
         list[str]: Nonempty training sentence entries.
     """
     data = load_dataset("mteb/JSTS", revision=REVISION, split="train")
-    texts = []
+    texts: list[str] = []
     for row in data.select(range(128)):
         texts.extend([row["sentence1"], row["sentence2"]])
 
     return texts
 
 
-def write_corpus(output, texts):
+def write_corpus(output: Path, texts: Sequence[str]) -> None:
     """Write the texts and their provenance sidecar.
 
     Args:
@@ -74,7 +83,7 @@ def write_corpus(output, texts):
     )
 
 
-def main():
+def main() -> None:
     """Prepare the fixed training corpus and its provenance sidecar."""
     args = parse_args()
     texts = load_training_texts()
