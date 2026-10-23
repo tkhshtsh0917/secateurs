@@ -37,6 +37,8 @@ uv run python examples/verify_saved.py --model artifacts/recovered --output repo
 | タスク | split | 元モデル | pruning＋回復後 | 差分（ポイント） |
 | --- | --- | ---: | ---: | ---: |
 | JaCWIRRetrieval | test | 84.027 | 83.950 | -0.077 |
+| MIRACLRetrieval | dev | 72.310 | 64.454 | -7.856 |
+| MrTidyRetrieval | test | 61.638 | 56.602 | -5.036 |
 | MultiLongDocReranking | test | 93.495 | 90.961 | -2.534 |
 | MultiLongDocRetrieval | dev | 44.327 | 42.542 | -1.785 |
 | MultiLongDocRetrieval | test（補足） | 44.019 | 40.276 | -3.743 |
@@ -45,8 +47,8 @@ uv run python examples/verify_saved.py --model artifacts/recovered --output repo
 
 すべて日本語のデータを使用しました。JaCWIRのデータrevisionは`abf6d5fb6759ad516f998bd887b75420d595672e`で、4,000クエリ、513,107文書、コーパスのチャンクサイズ1,024、top-k 1,000です。MultiLongDocRerankingのrevisionは`ad09ce14c17bce6edae151b7f6ef12e15d91dbf3`で、200クエリ、1,581件の候補文書です。MultiLongDocRetrievalのrevisionは`837028901907a7d419b4ab906f28e011ce1cc824`で、各splitは200クエリ、10,000文書、コーパスのチャンクサイズ1,024、top-k 1,000です。このタスクのJMTEB集計はdevを採用するため、testは補足として別に報告します。2つのsplitを独立した2タスクと数えたり、平均したりしません。クエリと文書には、それぞれ`検索クエリ: `と`検索文書: `を接頭辞として使いました。
 
-MIRACLRetrievalは元モデルのみ完了し、devのnDCG@10は72.310でした。860クエリ、6,953,614文書で、データrevisionは`9c09abc13478308c27598f350e31d8f06b9b5481`です。同じ推論条件で、コーパスのチャンクサイズ1,024、top-k 1,000を使用しました。回復後モデルの同条件の結果は未取得であり、この基準値だけでは圧縮の効果は分かりません。
+MIRACLRetrievalはdev、860クエリ、6,953,614文書、revision `9c09abc13478308c27598f350e31d8f06b9b5481`を使用しました。MrTidyRetrievalは日本語のtest subset、720クエリ、7,000,027文書、revision `fc24a3ce8f09746410daee3d5cd823ff7a0675b7`です。両ペアとも上記の推論条件、コーパスのチャンクサイズ1,024、top-k 1,000を使用しました。完了した検索checkpointで全文書の処理を確認し、元モデルと回復後でコーパスのfingerprintとクエリ順序が一致しています。評価コードのhash、ライブラリのバージョン、回復後checkpointのhashも過去の実行と一致します。
 
-この観測では、長文の検索と再順位付けで品質が低下しています。ただし、pruningと回復学習の影響を切り分けた結果ではありません。同条件のpruning直後の結果と、対照実験一式が必要です。また、一般的な高速化やJMTEB全体のスコアも実証しません。バッチサイズ16の実験を含め、推論条件が違う結果は集約していません。
+この観測では、MIRACL、Mr.TyDi、長文の検索と再順位付けで品質が低下しています。ただし、pruningと回復学習の影響を切り分けた結果ではありません。同条件のpruning直後の結果と、対照実験一式が必要です。また、一般的な高速化やJMTEB全体のスコアも実証しません。バッチサイズ16の実験を含め、推論条件が違う結果は集約していません。
 
 評価用プログラム全体と実行時の生のアーカイブは、このソース公開には含まれていません。この表は実験の途中記録であり、現状では、このcheckoutだけから第三者が独立して再実行できるベンチマークではありません。再現可能な評価の実行手段と共有可能な結果の公開は、[ロードマップ](roadmap.md)に残る作業です。開発用のロックファイルはソースのサンプルを対象としており、JMTEB評価環境全体は含みません。

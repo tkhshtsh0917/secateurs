@@ -61,6 +61,8 @@ one run per model, on an NVIDIA A100-SXM4-40GB. Scores are nDCG@10 multiplied by
 | Task | Split | Original | Pruned and recovered | Delta, points |
 | --- | --- | ---: | ---: | ---: |
 | JaCWIRRetrieval | test | 84.027 | 83.950 | -0.077 |
+| MIRACLRetrieval | dev | 72.310 | 64.454 | -7.856 |
+| MrTidyRetrieval | test | 61.638 | 56.602 | -5.036 |
 | MultiLongDocReranking | test | 93.495 | 90.961 | -2.534 |
 | MultiLongDocRetrieval | dev | 44.327 | 42.542 | -1.785 |
 | MultiLongDocRetrieval | test (supplemental) | 44.019 | 40.276 | -3.743 |
@@ -82,16 +84,19 @@ selects dev for this task; test is reported separately as supplemental evidence.
 The two splits are not two independent tasks and are not averaged together.
 Queries and documents used the prefixes `検索クエリ: ` and `検索文書: ` respectively.
 
-MIRACLRetrieval has completed for the original model only: dev nDCG@10 is
-72.310 on 860 queries and 6,953,614 corpus documents, at dataset revision
-`9c09abc13478308c27598f350e31d8f06b9b5481`. It used the same inference settings,
-corpus chunks of 1,024 and top-k 1,000. A matched recovered-model result is
-pending; this baseline alone does not show a compression effect.
+MIRACLRetrieval used dev, 860 queries and 6,953,614 corpus documents, at
+revision `9c09abc13478308c27598f350e31d8f06b9b5481`. MrTidyRetrieval used the
+Japanese test subset, 720 queries and 7,000,027 corpus documents, at revision
+`fc24a3ce8f09746410daee3d5cd823ff7a0675b7`. Both pairs used the inference settings
+above, corpus chunks of 1,024 and top-k 1,000. Completed search checkpoints
+confirm that every corpus document was processed; corpus fingerprints and query
+order match across the original and recovered conditions. The evaluation source
+hashes, library versions and recovered checkpoint hashes also match the earlier
+runs.
 
-These observations show quality regressions on long-document retrieval and
-reranking. They do
-not isolate the effect of pruning from the effect of recovery: matched
-pruned-only results and complete controls are still needed. They also do not
+These observations show quality regressions on MIRACL, Mr.TyDi, long-document
+retrieval and reranking. They do not isolate the effect of pruning from the
+effect of recovery: matched pruned-only results and complete controls are still needed. They also do not
 establish a general speedup or a full-suite JMTEB score. Results collected with
 different inference settings, including batch-16 experiments, are not combined
 into an aggregate.
