@@ -2,6 +2,8 @@
 
 ## Unreleased — 0.0.1.dev0
 
+- Record three-condition reranking diagnostics and the limited recovery of ranking quality.
+- Record the completed original/pruned/recovered pilot panel and its limitations.
 - Record completed MIRACL and Mr.TyDi retrieval pairs, including quality regressions.
 - Illustrate the README pruning example with an animated workflow in both languages.
 - Add type hints across the package, examples and tests, distribute a `py.typed`

@@ -2,7 +2,7 @@
 
 [English](../experiments.md) | 日本語
 
-2026-10-23時点。これは、方法を応用したpruning実験の初期記録であり、UltraBERTの再現完了報告ではありません。方法上の違いは[研究上の比較](research.md)に記載しています。
+2026-10-24時点。これは、方法を応用したpruning実験の初期記録であり、UltraBERTの再現完了報告ではありません。方法上の違いは[研究上の比較](research.md)に記載しています。
 
 ## 参照実験
 
@@ -49,6 +49,35 @@ uv run python examples/verify_saved.py --model artifacts/recovered --output repo
 
 MIRACLRetrievalはdev、860クエリ、6,953,614文書、revision `9c09abc13478308c27598f350e31d8f06b9b5481`を使用しました。MrTidyRetrievalは日本語のtest subset、720クエリ、7,000,027文書、revision `fc24a3ce8f09746410daee3d5cd823ff7a0675b7`です。両ペアとも上記の推論条件、コーパスのチャンクサイズ1,024、top-k 1,000を使用しました。完了した検索checkpointで全文書の処理を確認し、元モデルと回復後でコーパスのfingerprintとクエリ順序が一致しています。評価コードのhash、ライブラリのバージョン、回復後checkpointのhashも過去の実行と一致します。
 
-この観測では、MIRACL、Mr.TyDi、長文の検索と再順位付けで品質が低下しています。ただし、pruningと回復学習の影響を切り分けた結果ではありません。同条件のpruning直後の結果と、対照実験一式が必要です。また、一般的な高速化やJMTEB全体のスコアも実証しません。バッチサイズ16の実験を含め、推論条件が違う結果は集約していません。
+元モデルと回復後の2条件の観測では、MIRACL、Mr.TyDi、長文の検索と再順位付けで品質が低下しています。下記のpruning直後を含む比較では、5タスクについてcheckpoint間の変化を分けて確認します。MIRACL、Mr.TyDi、長文retrievalのpruning直後の結果は未取得です。一般的な高速化やJMTEB全体のスコアは実証していません。バッチサイズ16の実験を含め、推論条件が違う結果は集約していません。
+
+## 3条件の参照パネル
+
+固定したパネルで、元モデル・activation pruning直後・回復後のcheckpointを、上記と同じA100の推論条件で評価しました。各checkpointを1回だけ読み込み、JSTS・JSICK・JaGovFaqsRetrievalで使い回しています。全9評価が完了し、評価controllerの所要時間は約298秒でした。環境構築・対照モデルの復元・exportは含まず、純粋なエンコードのレイテンシーでもありません。スコアは各指標の100倍で、回復差分は回復後からpruning直後を引いたポイント数です。
+
+| タスク | split | 指標 | 元モデル | pruning直後 | 回復後 | 回復差分 |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| JSTS | validation | cosine Spearman | 83.5880 | 83.5490 | 85.3377 | +1.7887 |
+| JSICK | test | cosine Spearman | 77.9658 | 78.7879 | 79.6457 | +0.8578 |
+| JaGovFaqsRetrieval | test | nDCG@10 | 77.3160 | 76.8680 | 76.9920 | +0.1240 |
+
+データのrevisionはJSTSが`5bac629e25799df4c9c80a6a5db983d6cba9e77d`、JSICKが`729cfe4a16d3c2b61c6aa9f9f6c8a96bb5512868`、JaGovFaqsRetrievalが`0726b2af53c907628067871e2e7c84e0d8e099c2`です。検索では各条件で2,048クエリに対し全22,794文書を処理し、コーパスの同一性とクエリ順序を照合しました。復元したpruning直後のテンソルは過去のpruning直後checkpointと一致し、回復後checkpointも固定しています。tokenizerの規則・実際のencoding・モデルのpipeline設定の互換性も確認しました。過去の回復学習レポートには学習前重みの暗号学的hashがないため、この比較から回復後checkpointの学習系譜を遡及して証明することはできません。
+
+このパネルでは、回復学習によって文類似度の2スコアが上昇しました。JaGovFaqsではpruningによる0.4480ポイントの低下のうち0.1240ポイントを取り戻しましたが、元モデルからは0.3240ポイント低いままです。各条件1回の実行から得た、タスクに依存する観測です。JSTS validationは学習splitとは別ですが、校正・回復に使ったデータセットと同じ領域の評価です。有意差やMIRACL・Mr.TyDi・長文retrievalの悪化原因は実証していません。別に実施したreranking診断は下記に記載します。random/weight対照、幅の比較、反復実行は今後の課題です。3タスクの異なる指標を平均しません。
+
+## 3条件のreranking診断
+
+別の診断実行で、参照パネルと同じ3つのcheckpoint・ソースhash・ライブラリ版・推論条件を使い、JQaRAとMultiLongDocRerankingを評価しました。各モデルを1回だけ読み込み、両タスクで使い回しています。全6評価が完了し、評価controllerの所要時間は約1,407秒でした。環境構築・対照モデルの復元・exportは含みません。スコアは各指標の100倍で、回復差分は回復後からpruning直後を引いたポイント数です。
+
+| タスク | split | 指標 | 元モデル | pruning直後 | 回復後 | 回復差分 |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| JQaRAReranking | test | MAP@1000 | 63.469 | 58.586 | 58.498 | -0.088 |
+| MultiLongDocReranking | test | nDCG@10 | 93.495 | 90.888 | 90.961 | +0.073 |
+
+JQaRAのデータrevisionは`63254fa512e133e6300e35b6f9175c32c6cc8455`、subsetは`default`です。MultiLongDocRerankingは上記のrevision、subset `ja`を使用しました。長文rerankingの元モデルと回復後のスコアは、報告した桁数で過去の2条件実行と一致しています。準備記録では、固定したpruning plan、復元テンソルのsignature、回復後checkpoint、tokenizerの互換性を確認しました。
+
+この固定checkpoint間の比較では、JQaRAはpruningによって4.883ポイント、長文rerankingは2.607ポイント低下しています。回復による変化はそれぞれ-0.088、+0.073ポイントで、元モデルからの低下は4.971、2.534ポイント残りました。参照パネルの文類似度では改善しましたが、現在の小規模コーパスによる埋め込みMSEの回復recipeでは、rerankingの品質を取り戻せていません。この観測は今回のcheckpointとタスクに限られ、pruningや知識蒸留という手法全般の有効性を判定するものではありません。
+
+この2タスクは既知の悪化を調べるために選んだ診断であり、独立したholdoutではありません。各条件1回の評価で、小さい回復差分について統計的な有意差を主張しません。2本のNotebookで完了したのは5タスクの計15評価であり、全JMTEBの3条件比較ではありません。MIRACL・Mr.TyDi・長文retrievalのpruning直後評価、選択方法の対照、反復、公開環境で再実行可能な評価は残課題です。このtest結果で幅や回復学習の条件を調整した後、同じtestを未使用の最終評価として扱わないでください。
 
 評価用プログラム全体と実行時の生のアーカイブは、このソース公開には含まれていません。この表は実験の途中記録であり、現状では、このcheckoutだけから第三者が独立して再実行できるベンチマークではありません。再現可能な評価の実行手段と共有可能な結果の公開は、[ロードマップ](roadmap.md)に残る作業です。開発用のロックファイルはソースのサンプルを対象としており、JMTEB評価環境全体は含みません。
